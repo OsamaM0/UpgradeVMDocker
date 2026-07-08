@@ -9,8 +9,8 @@ services:
     container_name: ${PROJECT_NAME:-odoo18}-db
     environment:
       POSTGRES_DB: postgres
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the Dokploy Environment tab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Dokploy Environment tab}
       PGDATA: /var/lib/postgresql/data/pgdata
     volumes:
       - db-data:/var/lib/postgresql/data
@@ -18,7 +18,7 @@ services:
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -34,12 +34,22 @@ services:
         condition: service_healthy
     environment:
       HOST: db
-      USER: ${POSTGRES_USER}
-      PASSWORD: ${POSTGRES_PASSWORD}
+      USER: ${POSTGRES_USER:?Set POSTGRES_USER in the Dokploy Environment tab}
+      PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Dokploy Environment tab}
+      # Consumed by docker/odoo-entrypoint.sh to render odoo.conf on startup.
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the Dokploy Environment tab}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Dokploy Environment tab}
+      POSTGRES_DB: ${POSTGRES_DB:-odoo18}
+      ODOO_ADMIN_PASSWD: ${ODOO_ADMIN_PASSWD:?Set ODOO_ADMIN_PASSWD in the Dokploy Environment tab}
+      LIST_DB: ${LIST_DB:-True}
+      ADDONS_PATH: ${ADDONS_PATH:-/mnt/extra-addons}
+      ODOO_WORKERS: ${ODOO_WORKERS:-2}
+    entrypoint: ["/bin/sh", "/opt/odoo-entrypoint.sh"]
     volumes:
       - odoo-web-data:/var/lib/odoo          # filestore (persistent)
-      - ./config:/etc/odoo                    # odoo.conf (rendered from template)
+      - ./config:/etc/odoo                    # odoo.conf.template lives here; odoo.conf is rendered on startup
       - ./addons:/mnt/extra-addons            # custom addons
+      - ./docker/odoo-entrypoint.sh:/opt/odoo-entrypoint.sh:ro
     # Bind to localhost only — public traffic arrives through Traefik.
     ports:
       - "127.0.0.1:${ODOO_PORT:-8069}:8069"
@@ -51,18 +61,18 @@ services:
       - "traefik.enable=true"
       - "traefik.docker.network=dokploy-network"
       # --- HTTP → HTTPS redirect ---
-      - "traefik.http.routers.${PROJECT_NAME:-odoo18}-web.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.${PROJECT_NAME:-odoo18}-web.rule=Host(`${DOMAIN:?Set DOMAIN in the Dokploy Environment tab}`)"
       - "traefik.http.routers.${PROJECT_NAME:-odoo18}-web.entrypoints=web"
       - "traefik.http.routers.${PROJECT_NAME:-odoo18}-web.middlewares=${PROJECT_NAME:-odoo18}-https"
       - "traefik.http.middlewares.${PROJECT_NAME:-odoo18}-https.redirectscheme.scheme=https"
       # --- Main HTTPS router (web UI on 8069) ---
-      - "traefik.http.routers.${PROJECT_NAME:-odoo18}.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.${PROJECT_NAME:-odoo18}.rule=Host(`${DOMAIN:?}`)"
       - "traefik.http.routers.${PROJECT_NAME:-odoo18}.entrypoints=websecure"
       - "traefik.http.routers.${PROJECT_NAME:-odoo18}.tls.certresolver=letsencrypt"
       - "traefik.http.routers.${PROJECT_NAME:-odoo18}.service=${PROJECT_NAME:-odoo18}"
       - "traefik.http.services.${PROJECT_NAME:-odoo18}.loadbalancer.server.port=8069"
       # --- WebSocket router (Odoo 18 gevent/longpolling on 8072) ---
-      - "traefik.http.routers.${PROJECT_NAME:-odoo18}-ws.rule=Host(`${DOMAIN}`) && PathPrefix(`/websocket`)"
+      - "traefik.http.routers.${PROJECT_NAME:-odoo18}-ws.rule=Host(`${DOMAIN:?}`) && PathPrefix(`/websocket`)"
       - "traefik.http.routers.${PROJECT_NAME:-odoo18}-ws.entrypoints=websecure"
       - "traefik.http.routers.${PROJECT_NAME:-odoo18}-ws.tls.certresolver=letsencrypt"
       - "traefik.http.routers.${PROJECT_NAME:-odoo18}-ws.service=${PROJECT_NAME:-odoo18}-ws"
