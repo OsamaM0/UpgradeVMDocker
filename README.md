@@ -17,20 +17,39 @@ HTTPS via Let's Encrypt). Databases are imported from a remote/live VPS.
 ## Project structure
 ```
 .
-├── docker-compose.yml        # Odoo 18 + PostgreSQL + Traefik labels
-├── .env.example              # Copy to .env; secrets auto-filled by setup
+├── docker-compose.yml        # Main Odoo 18 + PostgreSQL + Traefik labels
+├── .env.example               # Copy to .env; secrets auto-filled by setup
 ├── .gitignore
 ├── config/
-│   └── odoo.conf.template    # Rendered to config/odoo.conf (git-ignored)
-├── addons/                   # Custom addons → /mnt/extra-addons
+│   └── odoo.conf.template    # Rendered to odoo.conf (git-ignored) at container start
+├── addons/                   # Main stack's custom addons → /mnt/extra-addons
 ├── backups/                  # Downloaded dumps (git-ignored)
+├── docker/
+│   ├── odoo-entrypoint.sh    # Renders odoo.conf, ensures DB exists, execs Odoo
+│   ├── Dockerfile.dev-vm     # Odoo 18 + SSH image shared by every devs/<name>/ instance
+│   └── dev-vm-entrypoint.sh  # Starts sshd, installs authorized_keys, then Odoo
+├── devs/                      # Isolated per-developer "VMs" — see devs/README.md
+│   ├── _template/             # Copy this to add a new developer instance
+│   ├── dev1/                  # Own Odoo + own Postgres + own SSH port
+│   └── dev2/                  # Own Odoo + own Postgres + own SSH port
 ├── scripts/
-│   ├── setup-vps.sh          # Install Docker, prep folders, secrets, start
-│   └── restore-db.sh         # Fetch remote dump + restore into PostgreSQL
+│   ├── setup-vps.sh          # Install Docker, prep folders, secrets, start (main stack)
+│   ├── restore-db.sh         # Fetch remote dump + restore into PostgreSQL (main stack)
+│   └── new-dev-vm.sh         # Scaffold a new devs/<name> developer VM
 └── docs/
     ├── DOKPLOY.md            # Deploy from GitHub via Dokploy
-    ├── DEVELOPER_ACCESS.md   # SSH tunnels, PyCharm, VS Code, debugging
+    ├── DEVELOPER_ACCESS.md   # SSH tunnels, PyCharm, VS Code, debugging (main stack)
+    ├── DEV_VMS.md            # Per-developer isolated VM: SSH, PyCharm, DB import
     └── SECURITY.md           # Firewall, ports, hardening
+```
+
+## Isolated developer VMs (multi-developer setup)
+Need a separate, fully isolated Odoo 18 + PostgreSQL + SSH sandbox per
+developer (own database, own addons, own SSH "VM" login for PyCharm/VS Code)?
+See [devs/README.md](devs/README.md) and [docs/DEV_VMS.md](docs/DEV_VMS.md).
+```bash
+./scripts/new-dev-vm.sh dev3          # scaffold a new instance
+cd devs/dev3 && docker compose up -d --build
 ```
 
 ## Architecture

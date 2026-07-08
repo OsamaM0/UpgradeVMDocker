@@ -1,0 +1,53 @@
+# ==========================================================================
+#  Developer VM image — Odoo 18 + OpenSSH server
+#  Shared by every stack under devs/<name>/. Each developer instance builds
+#  this same image but runs it as a fully separate container (own network,
+#  own volumes, own database, own SSH port) — see devs/<name>/docker-compose.yml.
+#
+#  SSH gives each container a genuine "personal VM" feel: PyCharm / VS Code
+#  can connect straight to it (Remote-SSH, or Docker/SSH remote interpreter)
+#  and get the real Odoo 18 Python environment, not just a tunnel.
+# ==========================================================================
+FROM odoo:18.0
+
+USER root
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        openssh-server \
+        sudo \
+        git \
+        vim \
+        nano \
+        less \
+        curl \
+    && mkdir -p /var/run/sshd \
+    && rm -rf /var/lib/apt/lists/*
+
+# Unprivileged developer user. SSH login is key-only (see sshd_config below) —
+# there is no password to brute-force. Added to the "odoo" group so the user
+# can read/write addons and the filestore owned by that group.
+ARG DEV_USER=developer
+ENV DEV_USER=${DEV_USER}
+RUN useradd -m -s /bin/bash "${DEV_USER}" \
+    && usermod -aG sudo,odoo "${DEV_USER}" \
+    && echo "${DEV_USER} ALL=(ALL) NOPASSWD:ALL" > "/etc/sudoers.d/${DEV_USER}" \
+    && chmod 0440 "/etc/sudoers.d/${DEV_USER}" \
+    && mkdir -p "/home/${DEV_USER}/.ssh" \
+    && chmod 700 "/home/${DEV_USER}/.ssh" \
+    && chown -R "${DEV_USER}:${DEV_USER}" "/home/${DEV_USER}"
+
+# Hardened sshd: no root login, no password auth, keys only.
+RUN sed -ri 's/^#?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config \
+    && sed -ri 's/^#?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && sed -ri 's/^#?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -ri 's/^#?X11Forwarding.*/X11Forwarding no/' /etc/ssh/sshd_config \
+    && sed -ri 's/^#?UsePAM.*/UsePAM yes/' /etc/ssh/sshd_config
+
+COPY docker/dev-vm-entrypoint.sh /opt/dev-vm-entrypoint.sh
+COPY docker/odoo-entrypoint.sh /opt/odoo-entrypoint.sh
+RUN chmod +x /opt/dev-vm-entrypoint.sh /opt/odoo-entrypoint.sh
+
+# 22 = SSH ("the VM"), 8069 = Odoo web, 8072 = Odoo longpolling/websocket
+EXPOSE 22 8069 8072
+
+ENTRYPOINT ["/bin/bash", "/opt/dev-vm-entrypoint.sh"]

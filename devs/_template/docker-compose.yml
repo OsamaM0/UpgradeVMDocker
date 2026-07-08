@@ -1,0 +1,105 @@
+# ==========================================================================
+#  Developer VM — Odoo 18 + PostgreSQL 16 + SSH (fully isolated instance)
+#
+#  This file is intentionally identical across every devs/<name>/ folder.
+#  All the differences between developer instances live in devs/<name>/.env
+#  (ports, credentials, domain). Copy this whole folder to scaffold a new
+#  developer, or use scripts/new-dev-vm.sh.
+#
+#  Isolation: own Postgres container + volume, own Odoo container + volume,
+#  own addons folder, own bridge network, own SSH port. Nothing is shared
+#  with other developer instances or the main stack in ../../docker-compose.yml.
+# ==========================================================================
+services:
+  db:
+    image: postgres:16
+    container_name: ${PROJECT_NAME:?Set PROJECT_NAME in .env}-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    # Loopback-only: reach it by tunnelling through this instance's own SSH port.
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:?Set POSTGRES_PORT in .env}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:?} -d postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+    networks:
+      - internal
+
+  odoo:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile.dev-vm
+      args:
+        DEV_USER: ${DEV_USER:-developer}
+    image: ${PROJECT_NAME:-odoo-dev}-vm:local
+    container_name: ${PROJECT_NAME:?}-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HOST: db
+      USER: ${POSTGRES_USER:?}
+      PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_USER: ${POSTGRES_USER:?}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: ${POSTGRES_DB:?}
+      ODOO_ADMIN_PASSWD: ${ODOO_ADMIN_PASSWD:?Set ODOO_ADMIN_PASSWD in .env}
+      LIST_DB: ${LIST_DB:-True}
+      ADDONS_PATH: ${ADDONS_PATH:-/mnt/extra-addons}
+      ODOO_WORKERS: ${ODOO_WORKERS:-0}
+      DEV_USER: ${DEV_USER:-developer}
+      DEV_SSH_PUBLIC_KEY: ${DEV_SSH_PUBLIC_KEY:-}
+    volumes:
+      - odoo-web-data:/var/lib/odoo             # filestore (persistent)
+      - sshd-keys:/etc/ssh                      # unique SSH host keys, persisted
+      - ../../config/odoo.conf.template:/etc/odoo/odoo.conf.template:ro
+      - ./addons:/mnt/extra-addons               # this developer's own addons only
+    ports:
+      # Public: this IS the developer's "VM" login (PyCharm/VS Code Remote-SSH).
+      - "${SSH_PORT:?Set SSH_PORT in .env}:22"
+      # Loopback-only: reach via SSH tunnel through the port above.
+      - "127.0.0.1:${ODOO_PORT:?Set ODOO_PORT in .env}:8069"
+    restart: unless-stopped
+    networks:
+      - internal
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=dokploy-network"
+      # --- HTTP -> HTTPS redirect ---
+      - "traefik.http.routers.${PROJECT_NAME:?}-web.rule=Host(`${DOMAIN:?Set DOMAIN in .env}`)"
+      - "traefik.http.routers.${PROJECT_NAME:?}-web.entrypoints=web"
+      - "traefik.http.routers.${PROJECT_NAME:?}-web.middlewares=${PROJECT_NAME:?}-https"
+      - "traefik.http.middlewares.${PROJECT_NAME:?}-https.redirectscheme.scheme=https"
+      # --- Main HTTPS router ---
+      - "traefik.http.routers.${PROJECT_NAME:?}.rule=Host(`${DOMAIN:?}`)"
+      - "traefik.http.routers.${PROJECT_NAME:?}.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME:?}.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${PROJECT_NAME:?}.service=${PROJECT_NAME:?}"
+      - "traefik.http.services.${PROJECT_NAME:?}.loadbalancer.server.port=8069"
+      # --- WebSocket router (Odoo 18 gevent/longpolling) ---
+      - "traefik.http.routers.${PROJECT_NAME:?}-ws.rule=Host(`${DOMAIN:?}`) && PathPrefix(`/websocket`)"
+      - "traefik.http.routers.${PROJECT_NAME:?}-ws.entrypoints=websecure"
+      - "traefik.http.routers.${PROJECT_NAME:?}-ws.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.${PROJECT_NAME:?}-ws.service=${PROJECT_NAME:?}-ws"
+      - "traefik.http.services.${PROJECT_NAME:?}-ws.loadbalancer.server.port=8072"
+
+volumes:
+  db-data:
+  odoo-web-data:
+  sshd-keys:
+
+networks:
+  internal:
+    driver: bridge
+  # Shared network created/managed by Dokploy (Traefik lives here).
+  dokploy-network:
+    external: true
