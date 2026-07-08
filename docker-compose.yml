@@ -8,7 +8,7 @@ services:
     image: postgres:16
     container_name: ${PROJECT_NAME:-odoo18}-db
     environment:
-      POSTGRES_DB: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-odoo18}
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in the Dokploy Environment tab}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the Dokploy Environment tab}
       PGDATA: /var/lib/postgresql/data/pgdata

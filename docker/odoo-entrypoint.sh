@@ -22,4 +22,35 @@ with open(os.environ['ODOO_RC'], 'w') as f:
     f.write(os.path.expandvars(tpl))
 "
 
+# Self-heal: ensure the target database exists even if the Postgres volume
+# was previously initialized without it (stale volume, changed POSTGRES_DB,
+# etc). Connects to the always-present 'postgres' system db to check/create.
+python3 -c "
+import os, sys, time
+import psycopg2
+
+host = os.environ.get('HOST', 'db')
+port = os.environ.get('PORT', '5432')
+user = os.environ['POSTGRES_USER']
+password = os.environ['POSTGRES_PASSWORD']
+dbname = os.environ.get('POSTGRES_DB', 'odoo18')
+
+conn = None
+for _ in range(30):
+    try:
+        conn = psycopg2.connect(host=host, port=port, user=user, password=password, dbname='postgres')
+        break
+    except psycopg2.OperationalError:
+        time.sleep(2)
+if conn is None:
+    sys.exit('odoo-entrypoint: could not reach Postgres to ensure database \"%s\" exists' % dbname)
+
+conn.autocommit = True
+cur = conn.cursor()
+cur.execute('SELECT 1 FROM pg_database WHERE datname = %s', (dbname,))
+if not cur.fetchone():
+    cur.execute('CREATE DATABASE \"%s\" OWNER \"%s\"' % (dbname, user))
+conn.close()
+"
+
 exec /entrypoint.sh "$@"
