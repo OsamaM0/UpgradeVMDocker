@@ -47,7 +47,7 @@ services:
     entrypoint: ["/bin/sh", "/opt/odoo-entrypoint.sh"]
     volumes:
       - odoo-web-data:/var/lib/odoo          # filestore (persistent)
-      - ./config:/etc/odoo                    # odoo.conf.template lives here; odoo.conf is rendered on startup
+      - ./config/odoo.conf.template:/etc/odoo/odoo.conf.template:ro   # rendered to $ODOO_RC (/tmp) on startup
       - ./addons:/mnt/extra-addons            # custom addons
       - ./docker/odoo-entrypoint.sh:/opt/odoo-entrypoint.sh:ro
     # Bind to localhost only — public traffic arrives through Traefik.
