@@ -1,0 +1,37 @@
+[options]
+; ============================================================
+;  Rendered by scripts/setup-vps.sh via envsubst.
+;  DO NOT edit config/odoo.conf directly — edit this template.
+;  Secrets come from .env and are never committed.
+; ============================================================
+
+; ---- Security ----
+admin_passwd = $ODOO_ADMIN_PASSWD
+list_db = $LIST_DB
+
+; ---- Database ----
+db_host = db
+db_port = 5432
+db_user = $POSTGRES_USER
+db_password = $POSTGRES_PASSWORD
+db_name = $POSTGRES_DB
+db_maxconn = 64
+
+; ---- Addons & data ----
+addons_path = $ADDONS_PATH
+data_dir = /var/lib/odoo
+
+; ---- Proxy / networking (behind Traefik) ----
+proxy_mode = True
+gevent_port = 8072
+
+; ---- Performance (tune to your VPS) ----
+workers = $ODOO_WORKERS
+max_cron_threads = 1
+limit_time_cpu = 600
+limit_time_real = 1200
+limit_memory_soft = 671088640
+limit_memory_hard = 805306368
+
+; ---- Logging (stdout for Docker) ----
+log_level = info

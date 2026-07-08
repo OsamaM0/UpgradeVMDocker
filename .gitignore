@@ -1,0 +1,21 @@
+# Secrets & environment
+.env
+.env.*
+!.env.example
+
+# Rendered Odoo config (contains the master password)
+config/odoo.conf
+
+# Database dumps / backups
+backups/
+*.sql
+*.sql.gz
+*.dump
+*.backup
+*.zip
+
+# OS / editor cruft
+.DS_Store
+.idea/
+*.swp
+*~
