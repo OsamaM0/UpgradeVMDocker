@@ -36,14 +36,16 @@ password = os.environ['POSTGRES_PASSWORD']
 dbname = os.environ.get('POSTGRES_DB', 'odoo18')
 
 conn = None
+last_err = None
 for _ in range(30):
     try:
         conn = psycopg2.connect(host=host, port=port, user=user, password=password, dbname='postgres')
         break
-    except psycopg2.OperationalError:
+    except psycopg2.OperationalError as e:
+        last_err = e
         time.sleep(2)
 if conn is None:
-    sys.exit('odoo-entrypoint: could not reach Postgres to ensure database \"%s\" exists' % dbname)
+    sys.exit('odoo-entrypoint: could not reach Postgres to ensure database \"%s\" exists: %s' % (dbname, last_err))
 
 conn.autocommit = True
 cur = conn.cursor()
